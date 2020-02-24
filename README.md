@@ -4,16 +4,18 @@
 ## TODO
 - [ ] Server
     - [ ] Room
-        - [ ] Port
-            - [ ] socket.getfreeport()?
+        - [X] Port
+            - [X] socket.getfreeport()?
         - [ ] Name
         - [ ] Chat
+            - [ ] Receive messages
+            - [ ] Distribute messages under players
         - [ ] Players
         - [ ] Shuffle
         - [ ] check cards
         - [ ] flop
         - [ ] river
-    - [ ] New connection
+    - [X] New connection
     - [ ] New room
 - [ ] Client
     - [ ] Connect to server
