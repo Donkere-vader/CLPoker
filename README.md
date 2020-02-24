@@ -3,24 +3,27 @@
 
 ## TODO
 - [ ] Server
-    - [ ] Room
+    - [ ] Table
         - [X] Port
             - [X] socket.getfreeport()?
-        - [ ] Name
+        - [X] Name
         - [ ] Chat
             - [ ] Receive messages
             - [ ] Distribute messages under players
-        - [ ] Players
-        - [ ] Shuffle
+        - [X] Players
+        - [X] Shuffle
         - [ ] check cards
         - [ ] flop
         - [ ] river
     - [X] New connection
-    - [ ] New room
+    - [ ] New table
 - [ ] Client
-    - [ ] Connect to server
-        - [ ] Connection lost message
-    - [ ] Connect to room
-        - [ ] Leave room
+    - [X] Connect to server
+        - [X] Connection lost message
+    - [X] Connect to table
+        - [ ] Leave table
         - [ ] Update table
-    - [ ] 
+    - [ ] Tkinter
+        - [ ] Display table
+        - [ ] Buttons
+    
