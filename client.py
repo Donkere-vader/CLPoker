@@ -218,10 +218,39 @@ class Game:
         }
         self.send(data)
 
-    def table(self, table):
-        # TODO table
-        messagebox.showinfo('test', table)
+    def table(self):
+        # TODO GET IMAGES and  display them
+        self.clear_window(self.root)
+        menu_frame = Frame()
+        menu_frame.grid()
+        game_frame = Frame()
+        game_frame.grid()
+        options_frame = Frame()
+        options_frame.grid()
 
+        Button(
+            master=menu_frame,
+            text='Leave',
+            font='arial 15',
+            command=self.leave_table
+        ).grid(column=0)
+
+        Label(
+            master=menu_frame,
+            text=f"Server: {self.client.sock.getsockname()[0]} Table: {self.client.sock.getsockname()[1]}",
+            font='arial 15'
+        ).grid(column=1)
+
+        player_frames = [Frame(master=game_frame) for i in range(2)]
+        player_frames[0].grid(row=0)
+        player_frames[1].grid(row=2)
+
+        table_frame = Frame(master=game_frame)
+        table_frame.grid(row=1)
+    
+    def leave_table(self):
+        #TODO
+        pass
 
 game = Game()
 game.root.mainloop()
