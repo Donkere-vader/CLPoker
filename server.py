@@ -106,7 +106,120 @@ class Table:
             self.connected_users[user]['cards'] = cards
     
     def check_winners(self):
-        pass
+        winners = []
+        highest_score = 0 # from high card (1) to straight flush (9)
+        highest_card = 0
+        for user in self.connected_users:
+            cards = self.middle_cards
+            cards.append(self.connected_users[user]['cards'])
+            card_values = [card['value'] for card in cards].sort()
+            card_colors = [card['color'] for card in cards]
+
+            # check for high card
+            if highest_score <= 1:
+                for card in self.connected_users[user]['cards']:
+                    if card['value'] == highest_card:
+                        winners.append(user)
+                        highest_score = 1
+                    elif card['value'] > highest_card:
+                        highest_card = card['value']
+                        winners = [user]
+                        highest_score = 1
+
+            # pairs
+            if highest_score <= 3:
+                pairs = []
+                for card in card_values:
+                    if card_values.count(card) >= 2:
+                        if card not in pairs:
+                            pairs.append(card)
+                if (len(pairs) == 1 and highest_score <= 2) or (len(pairs) >= 2 and highest_score <= 3):
+                    if highest_card == max(pairs):
+                        winners.append(user)
+                    if highest_card < max(pairs):
+                        winners = [user]
+                        highest_card = max(pairs)
+                    if len(pairs) == 1:
+                        highest_score = 2
+                    else:
+                        highest_score = 3
+
+            # three of a kind
+            three_of_a_kind = 0
+            if highest_score <= 4:
+                for card in card_values:
+                    if card_values.count(card) == 3:
+                        if highest_score < 4 or highest_card < card:
+                            highest_score = 4
+                            highest_card = card
+                            winners = [user]
+                        else:
+                            winners.append(user)
+                        three_of_a_kind = card
+            
+            # straight
+            if highest_score <= 5:
+                past_value = min(card_values)
+                straight = True
+                for i in range(1, 5):
+                    if min(card_values) + i != past_value + 1:
+                        straight = False
+                        break
+                if straight:
+                    if highest_score < 5 or highest_card < max(card_values):
+                        highest_score = 5
+                        winners = [user]
+                        highest_card = max(card_values)
+                    else:
+                        winners.append(user)
+            
+            # flush
+            flush = False
+            if highest_score <= 6:
+                for card in card_colors:
+                    if card_colors.count(card) == 5:
+                        if highest_score < 6 or highest_card < max(card_values):
+                            winners = [user]
+                            highest_score = 6
+                            highest_card = max(card_values)
+                        else:
+                            winners.append(user)
+                        flush = True
+            
+            # full house
+            if highest_score <= 7:
+                if (len(pairs) == 1 and three_of_a_kind and three_of_a_kind not in pairs) or (three_of_a_kind and len(pairs) >= 2):
+                    if highest_score < 7 or highest_card < max(card_values):
+                        winners = [user]
+                        highest_score = 7
+                        highest_card = max(card_values)
+                    else:
+                        winners.append(user)
+            
+            # four of a kind
+            if highest_score <= 8:
+                for card in card_values:
+                    if card_values.count(card) == 4:
+                        if highest_score < 8 or highest_card < max(card_values):
+                            highest_score = 4
+                            highest_card = max(card_values)
+                            winners = [user]
+                        else:
+                            winners.append(user)
+            
+            # check for straight flush
+            if highest_score <= 9:
+                if straight and flush:
+                    self.parent_server.Log("\u001b[32mSOMEONE GOT A FRICKIN STRAIGHT FLUSH!!!!!\u001b[0m")
+                    from tkinter import messagebox
+                    messagebox.showinfo("WAATT", "SOMEONE GOT A FRICKIG STRAIGHT FLUSH!!!")
+                    if highest_score < 9 or highest_card < max(card_values):
+                        highest_score = 9
+                        highest_card = max(card_values)
+                        winners = [user]
+                    else:
+                        winners.append(user)
+
             
 
 class Server:
