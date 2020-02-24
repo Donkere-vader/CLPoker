@@ -121,7 +121,8 @@ class Table:
             if self.connected_users[user]['in_game']:
                 self.playing_users.append(user)
         self.shuffle()
-        self.on_stake = self.playing_users[0]
+        self.on_stake = self.get_next_in_dict(None, self.playing_users)
+        self.connected_users[self.on_stake]['money'] -= self.stake
         self.pot += self.stake
         self.connected_users[self.on_stake]['bet'] = self.on_stake
         self.on_turn = self.get_next_in_dict(self.stake, self.playing_users)
@@ -129,14 +130,17 @@ class Table:
             players = {}
             for player in self.playing_users:
                 players[player] = {
-                    "name": self.playing_users[player]['name'],
-                    "money": self.playing_users[player]['money']
+                    "name": self.playing_users[player]['name']
                 }
+            bets = {}
+            for user in self.connected_users:
+                bets[user] = self.connected_users[user]['bet']
             data = {
                 "type": "game_start",
                 "cards": self.connected_users[user]['cards'],
                 "middle_cards": self.middle_cards,
-                "players": players
+                "players": players,
+                "bets": bets
             }
             self.connected_users[user]['c'].send(bytes(json.dumps(data), "utf-8"))
 
@@ -178,6 +182,7 @@ class Table:
         winners = []
         highest_score = 0  # from high card (1) to straight flush (9)
         highest_card = 0
+        won_by = ''
         for user in self.connected_users:
             cards = self.middle_cards
             cards.append(self.connected_users[user]['cards'])
@@ -190,10 +195,12 @@ class Table:
                     if card['value'] == highest_card:
                         winners.append(user)
                         highest_score = 1
+                        won_by = 'Highest card'
                     elif card['value'] > highest_card:
                         highest_card = card['value']
                         winners = [user]
                         highest_score = 1
+                        won_by = 'Highest card'
 
             # pairs
             if highest_score <= 3:
@@ -210,8 +217,10 @@ class Table:
                         highest_card = max(pairs)
                     if len(pairs) == 1:
                         highest_score = 2
+                        won_by = 'Pair'
                     else:
                         highest_score = 3
+                        won_by = 'Two pairs'
 
             # three of a kind
             three_of_a_kind = 0
@@ -224,6 +233,7 @@ class Table:
                             winners = [user]
                         else:
                             winners.append(user)
+                        won_by = 'Three of a kind'
                         three_of_a_kind = card
 
             # straight
@@ -241,6 +251,7 @@ class Table:
                         highest_card = max(card_values)
                     else:
                         winners.append(user)
+                    won_by = 'Straight'
 
             # flush
             flush = False
@@ -254,6 +265,7 @@ class Table:
                         else:
                             winners.append(user)
                         flush = True
+                        won_by = 'Flush'
 
             # full house
             if highest_score <= 7:
@@ -264,6 +276,7 @@ class Table:
                         highest_card = max(card_values)
                     else:
                         winners.append(user)
+                    won_by = 'Full house'
 
             # four of a kind
             if highest_score <= 8:
@@ -275,6 +288,7 @@ class Table:
                             winners = [user]
                         else:
                             winners.append(user)
+                        won_by = 'Four of a kind'
 
             # check for straight flush
             if highest_score <= 9:
@@ -288,6 +302,7 @@ class Table:
                         winners = [user]
                     else:
                         winners.append(user)
+                    won_by = 'Straight fkn flush'
 
 
 class Server:
@@ -375,8 +390,3 @@ class Server:
 
 
 server = Server()
-
-
-# "python.formatting.autopep8Args": [
-#    "--max-line-length=200"
-# ]
