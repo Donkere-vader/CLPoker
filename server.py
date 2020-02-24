@@ -12,9 +12,10 @@ for color in ['heart', 'tiles', 'clovers', 'pikes']:
     for i in range(0, 14):
         num = i
         PLAYING_CARDS.append({
-            "color":color,
-            "value":num
+            "color": color,
+            "value": num
         })
+
 
 def print_logo():
     print("""\u001b[31m
@@ -26,10 +27,12 @@ def print_logo():
    ╚═════╝╚══════╝    ╚═╝      ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝                                                       
 \u001b[0m\t\t\tBy CLSoftSolutions (C)\n""")
 
+
 def get_time():
     date = datetime.datetime.now()
     time = f"{date.hour if date.hour > 9 else ('0' + str(date.hour))}:{date.minute if date.minute > 9 else ('0' + str(date.minute))} {date.day}/{date.month}/{date.year}"
     return time
+
 
 class Table:
     def __init__(self, name, stake, server):
@@ -48,6 +51,7 @@ class Table:
         self.parent_server = server
         self.middle_cards = []
         self.occupied_cards = []
+        self.game_started = False
 
     def start(self):
         while True:
@@ -59,19 +63,23 @@ class Table:
 
     def handler(self, c, a):
         self.connected_users[a] = {
-                        "c":c,
-                        "name":"Player",
-                        "in_game":False,
-                        "money":STARTINGMONEY,
-                        "cards":[],
-                        "bet":0
-                    }
+            "c": c,
+            "name": "Player",
+            "in_game": False,
+            "money": STARTINGMONEY,
+            "cards": [],
+            "bet": 0
+        }
         self.parent_server.Log(f"\u001b[32m[{get_time()}]\u001b[0m {a} Connected to table {self.name}")
         while True:
             try:
                 data = c.recv(1024)
             except ConnectionResetError:
                 self.parent_server.Log(f"\u001b[31m[{get_time()}]\u001b[0m {a} Left table {self.name}")
+                del self.connected_users[a]
+                if a in self.playing_users:
+                    del self.playing_users[a]
+                    # update table info at users? that someone left? TODO
                 return
             if not data:
                 continue
@@ -86,7 +94,68 @@ class Table:
             if data['type'] == 'name':
                 self.connected_users[a]['name'] = data['name']
                 self.parent_server.Log(self.connected_users)
-    
+            if data['type'] == 'ready':
+                self.connected_users[a]['in_game'] = data['ready']
+                if not self.game_started:
+                    ready = True
+                    for user in self.connected_users:
+                        if self.connected_users[user]['in_game'] == False:
+                            ready = False
+                            break
+                    if ready:
+                        self.start_game()
+
+    def get_next_in_dict(self, cur, dct):
+        nxt_one = False
+        for i in dct:
+            if nxt_one:
+                return i
+            elif i == cur:
+                nxt_one = True
+        if nxt_one:
+            return dct[0]
+
+    def start_game(self):
+        self.playing_users = []
+        for user in self.connected_users:
+            if self.connected_users[user]['in_game']:
+                self.playing_users.append(user)
+        self.shuffle()
+        self.on_stake = self.playing_users[0]
+        self.pot += self.stake
+        self.connected_users[self.on_stake]['bet'] = self.on_stake
+        self.on_turn = self.get_next_in_dict(self.stake, self.playing_users)
+        for user in self.connected_users:
+            players = {}
+            for player in self.playing_users:
+                players[player] = {
+                    "name": self.playing_users[player]['name'],
+                    "money": self.playing_users[player]['money']
+                }
+            data = {
+                "type": "game_start",
+                "cards": self.connected_users[user]['cards'],
+                "middle_cards": self.middle_cards,
+                "players": players
+            }
+            self.connected_users[user]['c'].send(bytes(json.dumps(data), "utf-8"))
+
+    def update_users(self):  # send all the data to the users
+        bets = {}
+        for user in self.connected_users:
+            bets[user] = self.connected_users[user]['bet']
+        for user in self.connected_users:
+            data = {
+                "type": "update",
+                "on_turn": False,
+                "pot": self.pot,
+                "bets": bets
+            }
+            if self.connected_users[user] == self.on_turn:
+                data['on_turn'] = True
+            self.connected_users[user]['c'].send(
+                bytes(json.dumps(data), "utf-8"))
+
     def shuffle(self):
         self.occupied_cards = []
         self.middle_cards = []
@@ -96,7 +165,7 @@ class Table:
                 card = random.choice(PLAYING_CARDS)
             self.middle_cards.append(card)
             i += 1
-        for user in self.connected_users:
+        for user in self.playing_users:
             cards = []
             for i in range(2):
                 card = random.choice(PLAYING_CARDS)
@@ -104,10 +173,10 @@ class Table:
                     card = random.choice(PLAYING_CARDS)
                 cards.append(card)
             self.connected_users[user]['cards'] = cards
-    
+
     def check_winners(self):
         winners = []
-        highest_score = 0 # from high card (1) to straight flush (9)
+        highest_score = 0  # from high card (1) to straight flush (9)
         highest_card = 0
         for user in self.connected_users:
             cards = self.middle_cards
@@ -156,7 +225,7 @@ class Table:
                         else:
                             winners.append(user)
                         three_of_a_kind = card
-            
+
             # straight
             if highest_score <= 5:
                 past_value = min(card_values)
@@ -172,7 +241,7 @@ class Table:
                         highest_card = max(card_values)
                     else:
                         winners.append(user)
-            
+
             # flush
             flush = False
             if highest_score <= 6:
@@ -185,7 +254,7 @@ class Table:
                         else:
                             winners.append(user)
                         flush = True
-            
+
             # full house
             if highest_score <= 7:
                 if (len(pairs) == 1 and three_of_a_kind and three_of_a_kind not in pairs) or (three_of_a_kind and len(pairs) >= 2):
@@ -195,7 +264,7 @@ class Table:
                         highest_card = max(card_values)
                     else:
                         winners.append(user)
-            
+
             # four of a kind
             if highest_score <= 8:
                 for card in card_values:
@@ -206,7 +275,7 @@ class Table:
                             winners = [user]
                         else:
                             winners.append(user)
-            
+
             # check for straight flush
             if highest_score <= 9:
                 if straight and flush:
@@ -220,7 +289,6 @@ class Table:
                     else:
                         winners.append(user)
 
-            
 
 class Server:
     def __init__(self):
@@ -238,7 +306,7 @@ class Server:
             cThread.daemon = True
             cThread.start()
             self.connections.append(c)
-    
+
     def Log(self, text):
         self.log.append(text)
         self.console_out()
@@ -247,12 +315,12 @@ class Server:
         tables = []
         for table in self.tables:
             tables.append({
-                "name":table.name,
-                "port":table.port
+                "name": table.name,
+                "port": table.port
             })
         data = {
-            "type":"tables",
-            "tables":tables
+            "type": "tables",
+            "tables": tables
         }
         self.connections.append(c)
         c.send(bytes(json.dumps(data), "utf-8"))
@@ -270,11 +338,11 @@ class Server:
             if data['type'] == 'new_table':
                 table_port = self.new_table(data['name'], data['stake'])
                 data = {
-                    "type":"table_port",
-                    "port":table_port
+                    "type": "table_port",
+                    "port": table_port
                 }
                 c.send(bytes(json.dumps(data), "utf-8"))
-    
+
     def new_table(self, name, stake):
         new_table = Table(name, stake, self)
         self.tables.append(new_table)
@@ -305,4 +373,10 @@ class Server:
         for n in self.log:
             print(n)
 
+
 server = Server()
+
+
+# "python.formatting.autopep8Args": [
+#    "--max-line-length=200"
+# ]
