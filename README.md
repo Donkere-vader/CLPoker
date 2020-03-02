@@ -35,4 +35,12 @@
     - [ ] testing by friends (if bugs back to while loop)
 
 ## :bug: BUGS
- - [ ] Call error? when player calls to x and player 2's bet is at x p2 still has to call??
+ - [X] Call money doesn't get written off
+ - [X] End of round bet reset
+ - [X] Invalid port error messages misses a return out of the funciton
+ - [X] Call to is a negative number?
+ - [X] Starting game at table... red time color in console, should be green
+ - [X] try except continue on TimeoutError
+
+## Before build
+ - [ ] Remove flop and river and cards print in client
