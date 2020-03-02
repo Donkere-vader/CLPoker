@@ -26,8 +26,9 @@
     - [X] Tkinter
         - [X] Display table
         - [X] Buttons
+
 - [ ] Finishing up
-    while bugs:
+    - while bugs:
         - [ ] Bug fixxing (Busy)
         - [ ] Testing
     - [ ] build v1.0 (pyinstaller)
