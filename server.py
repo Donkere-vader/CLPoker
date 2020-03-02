@@ -5,11 +5,14 @@ import threading
 import datetime
 import random
 
+__version__ = "0.9"
+
+LOG_LENGTH = 15
 STARTINGMONEY = 1000
 IP = '0.0.0.0'
 PLAYING_CARDS = []
-for color in ['heart', 'tiles', 'clovers', 'pikes']:
-    for i in range(0, 14):
+for color in ['hearts', 'tiles', 'clovers', 'pikes']:
+    for i in range(1, 14):
         num = i
         PLAYING_CARDS.append({
             "color": color,
@@ -19,12 +22,12 @@ for color in ['heart', 'tiles', 'clovers', 'pikes']:
 
 def print_logo():
     print("""\u001b[31m
-   ██████╗██╗         ██████╗  ██████╗ ██╗  ██╗███████╗██████╗ 
+   ██████╗██╗         ██████╗  ██████╗ ██╗  ██╗███████╗██████╗
   ██╔════╝██║         ██╔══██╗██╔═══██╗██║ ██╔╝██╔════╝██╔══██╗
   ██║     ██║         ██████╔╝██║   ██║█████╔╝ █████╗  ██████╔╝
   ██║     ██║         ██╔═══╝ ██║   ██║██╔═██╗ ██╔══╝  ██╔══██╗
   ╚██████╗███████╗    ██║     ╚██████╔╝██║  ██╗███████╗██║  ██║
-   ╚═════╝╚══════╝    ╚═╝      ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝                                                       
+   ╚═════╝╚══════╝    ╚═╝      ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝
 \u001b[0m\t\t\tBy CLSoftSolutions (C)\n""")
 
 
@@ -39,6 +42,7 @@ class Table:
         self.name = name
         self.connections = []
         self.connected_users = {}
+        self.playing_users = {}
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.bind((IP, 0))
         self.port = self.sock.getsockname()[1]
@@ -47,11 +51,15 @@ class Table:
         self.pot = 0
         self.stake = stake
         self.call_to = self.stake
-        self.on_stake = 0
+        self.on_stake = None
         self.parent_server = server
         self.middle_cards = []
         self.occupied_cards = []
         self.game_started = False
+        self.flop = False
+        self.river = False
+        self.winners = []
+        self.won_by = ""
 
     def start(self):
         while True:
@@ -62,6 +70,7 @@ class Table:
             self.connections.append(c)
 
     def handler(self, c, a):
+        a = f"{a[0]}:{a[1]}"
         self.connected_users[a] = {
             "c": c,
             "name": "Player",
@@ -71,29 +80,91 @@ class Table:
             "bet": 0
         }
         self.parent_server.Log(f"\u001b[32m[{get_time()}]\u001b[0m {a} Connected to table {self.name}")
+        players = {}
+        for player in self.playing_users:
+            players[player] = {
+                "name": self.playing_users[player]['name'],
+                "a": self.playing_users[player]['a']
+            }
+        bets = {}
+        for user in self.connected_users:
+            bets[user] = self.connected_users[user]['bet']
+        data = {
+            "type": "table_info",
+            "middle_cards": self.middle_cards,
+            "players": players,
+            "flop": self.flop,
+            "river": self.river,
+            "stake": self.stake,
+            "a": a,
+            "table_name": self.name
+        }
+        self.connected_users[a]['c'].send(bytes(json.dumps(data), "utf-8"))
         while True:
             try:
                 data = c.recv(1024)
             except ConnectionResetError:
-                self.parent_server.Log(f"\u001b[31m[{get_time()}]\u001b[0m {a} Left table {self.name}")
+                data = None
+            if not data:
                 del self.connected_users[a]
+                self.parent_server.Log(f"\u001b[31m[{get_time()}]\u001b[0m {a} Left table {self.name}")
                 if a in self.playing_users:
                     del self.playing_users[a]
-                    # update table info at users? that someone left? TODO
+                if len(self.connected_users) == 0:
+                    del self.parent_server.tables[self.parent_server.tables.index(self)]
+                    self.parent_server.Log(f"\u001b[31m[{get_time()}]\u001b[0m Table {self.name} offline")
+                    del self
+                    return
+                # update table info at users? that someone left? TODO
                 return
-            if not data:
-                continue
+
             data = json.loads(data.decode("utf-8"))
             if data['type'] == 'move':
                 if data['move'] == 'call':
-                    pass
-                if data['move'] == 'check':
-                    pass
+                    if self.playing_users[a]['money'] < self.call_to - self.playing_users[a]['bet']:
+                        self.playing_users['bet'] += self.playing_users[a]['money']
+                        self.playing_users[a]['money'] = 0
+                    else:
+                        self.playing_users[a]['bet'] = self.call_to
+                        self.playing_users[a]['money'] -= self.call_to - self.playing_users[a]['bet']
                 if data['move'] == 'raise':
-                    pass
+                    amount = data['amount']
+                    self.call_to += amount
+                    self.playing_users[a]['bet'] += amount
+                    self.playing_users[a]['money'] -= amount
+                    self.parent_server.Log(f"{self.playing_users[a]['name']} has betted {self.playing_users[a]['bet']} and has {self.playing_users[a]['money']} EUR left")
+
+                next_round = True
+                bet = 0
+                for p in self.playing_users:
+                    if bet == 0:
+                        bet = self.playing_users[p]['bet']
+                    if self.playing_users[p]['bet'] != bet:
+                        next_round = False
+
+                self.parent_server.Log(f"bet: {bet}, next_round: {next_round}, bet == self.stake: {bet == self.stake}, self.on_turn == self.on_stake: {self.on_turn == self.on_stake}")
+                if (next_round and bet == self.stake and self.on_turn == self.on_stake) or (next_round and bet != self.stake):
+                    if not self.flop:
+                        self.flop = True
+                    else:
+                        self.river = True
+                        self.winners, self.won_by = self.check_winners()
+                        self.end_of_round()
+                self.parent_server.Log(f"self.flop: {self.flop}\nself.river: {self.river}")
+                self.on_turn = self.get_next_in_dict(self.on_turn, self.playing_users)
+                if data['move'] == 'fold':
+                    del self.playing_users[a]
+                    if len(self.playing_users) < 2:
+                        self.winners = [next(iter(self.playing_users))]
+                        self.won_by = "being the last one "
+                        self.end_of_round()
+                self.update_users()
+
             if data['type'] == 'name':
-                self.connected_users[a]['name'] = data['name']
-                self.parent_server.Log(self.connected_users)
+                if data['name'] != '':
+                    self.connected_users[a]['name'] = data['name']
+                    self.parent_server.console_out()
+
             if data['type'] == 'ready':
                 self.connected_users[a]['in_game'] = data['ready']
                 if not self.game_started:
@@ -102,7 +173,7 @@ class Table:
                         if self.connected_users[user]['in_game'] == False:
                             ready = False
                             break
-                    if ready:
+                    if ready and len(self.connected_users) > 1:
                         self.start_game()
 
     def get_next_in_dict(self, cur, dct):
@@ -112,53 +183,79 @@ class Table:
                 return i
             elif i == cur:
                 nxt_one = True
-        if nxt_one:
-            return dct[0]
+        return next(iter(dct))
+
+    def end_of_round(self):
+        for p in self.winners:
+            self.connected_users[p]['money'] = self.pot // len(self.winners)
+        self.pot = 0
+        msg = f"{self.connected_users[self.winners[0]]['name']} won with a {self.won_by}"
+        self.parent_server.Log(f"winners: {self.winners} len(winners): {len(self.winners)}")
+        if len(self.winners) > 1:
+            msg = ""
+            for idx, w in enumerate(self.winners):
+                if idx < len(self.winners) - 1:
+                    msg += f"{self.connected_users[w]['name']}, "
+                elif idx == len(self.winners) - 1:
+                    msg += self.connected_users[w]['name']
+                else:
+                    msg += f"{self.connected_users[w]['name']} & "
+                msg += f" won with a {self.won_by}"
+        for c in self.connected_users:
+            data = {
+                "type": "msg",
+                "msg": msg
+            }
+            self.connected_users[c]['c'].send(bytes(json.dumps(data), "utf-8"))
+        self.start_game()
 
     def start_game(self):
-        self.playing_users = []
+        self.pot = 0
+        self.parent_server.Log(f"\u001b[31m[{get_time()}]\u001b[0m Starting game at table {self.name} {self.port}")
+        self.game_started = True
+        self.playing_users = {}
         for user in self.connected_users:
             if self.connected_users[user]['in_game']:
-                self.playing_users.append(user)
+                self.playing_users[user] = self.connected_users[user]
         self.shuffle()
-        self.on_stake = self.get_next_in_dict(None, self.playing_users)
+        self.on_stake = self.get_next_in_dict(self.on_stake, self.playing_users)
         self.connected_users[self.on_stake]['money'] -= self.stake
         self.pot += self.stake
-        self.connected_users[self.on_stake]['bet'] = self.on_stake
-        self.on_turn = self.get_next_in_dict(self.stake, self.playing_users)
+        self.connected_users[self.on_stake]['bet'] = self.stake
+        self.on_turn = self.get_next_in_dict(self.on_stake, self.playing_users)
+        players = {}
+        for user in self.playing_users:
+            players[user] = {
+                "name": self.playing_users[user]['name'],
+                "bet": self.playing_users[user]['bet'],
+                "money": self.playing_users[user]['money']
+            }
         for user in self.connected_users:
-            players = {}
-            for player in self.playing_users:
-                players[player] = {
-                    "name": self.playing_users[player]['name']
-                }
-            bets = {}
-            for user in self.connected_users:
-                bets[user] = self.connected_users[user]['bet']
             data = {
                 "type": "game_start",
                 "cards": self.connected_users[user]['cards'],
-                "middle_cards": self.middle_cards,
+                "middle_cards": self.middle_cards[:3],
                 "players": players,
-                "bets": bets
+                "on_turn": True if user == self.on_turn else False
             }
             self.connected_users[user]['c'].send(bytes(json.dumps(data), "utf-8"))
 
     def update_users(self):  # send all the data to the users
         bets = {}
-        for user in self.connected_users:
-            bets[user] = self.connected_users[user]['bet']
+        for user in self.playing_users:
+            bets[user] = self.playing_users[user]['bet']
         for user in self.connected_users:
             data = {
                 "type": "update",
-                "on_turn": False,
+                "on_turn": True if user == self.on_turn else False,
                 "pot": self.pot,
                 "bets": bets
             }
-            if self.connected_users[user] == self.on_turn:
-                data['on_turn'] = True
-            self.connected_users[user]['c'].send(
-                bytes(json.dumps(data), "utf-8"))
+            if self.flop:
+                data['flop'] = self.middle_cards[3]
+            if self.river:
+                data['river'] = self.middle_cards[4]
+            self.connected_users[user]['c'].send(bytes(json.dumps(data), "utf-8"))
 
     def shuffle(self):
         self.occupied_cards = []
@@ -185,8 +282,9 @@ class Table:
         won_by = ''
         for user in self.connected_users:
             cards = self.middle_cards
-            cards.append(self.connected_users[user]['cards'])
-            card_values = [card['value'] for card in cards].sort()
+            cards += self.connected_users[user]['cards']
+            card_values = [card['value'] for card in cards]
+            card_values.sort()
             card_colors = [card['color'] for card in cards]
 
             # check for high card
@@ -303,6 +401,7 @@ class Table:
                     else:
                         winners.append(user)
                     won_by = 'Straight fkn flush'
+        return winners, won_by
 
 
 class Server:
@@ -324,6 +423,7 @@ class Server:
 
     def Log(self, text):
         self.log.append(text)
+        self.log = self.log[-LOG_LENGTH:]
         self.console_out()
 
     def handler(self, c, a):
@@ -357,6 +457,18 @@ class Server:
                     "port": table_port
                 }
                 c.send(bytes(json.dumps(data), "utf-8"))
+            if data['type'] == 'refresh_tables':
+                tables = []
+                for table in self.tables:
+                    tables.append({
+                        "name": table.name,
+                        "port": table.port
+                    })
+                data = {
+                    "type": "tables",
+                    "tables": tables
+                }
+                c.send(bytes(json.dumps(data), "utf-8"))
 
     def new_table(self, name, stake):
         new_table = Table(name, stake, self)
@@ -384,7 +496,6 @@ class Server:
                 print(f" {table.connected_users[user]['name']}", end="")
             print()
         print("\n[[ === LOG === ]]")
-        self.log = self.log[-15:]
         for n in self.log:
             print(n)
 
