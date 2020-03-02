@@ -3,7 +3,7 @@ import socket
 import json
 import threading
 
-__version__ = "0.9"
+__version__ = "0.9.1"
 
 
 class Client:
@@ -20,7 +20,10 @@ class Client:
         self.set_name()
         while True:
             try:
-                data = self.sock.recv(1024)
+                try:
+                    data = self.sock.recv(1024)
+                except TimeoutError:  # so script doesn't crash if the other users take to long to do somin
+                    continue
                 if not data:
                     continue
                 data = json.loads(data.decode("utf-8"))
@@ -53,6 +56,8 @@ class Client:
                     game.players[p]['bet'] = data['players'][p]['bet']
                     if data['players'][p]['bet'] > game.call_to:
                         game.call_to = data['players'][p]['bet']
+                game.flop = None
+                game.river = None
                 game.table()
                 game.update()
             elif data['type'] == 'update':
@@ -162,6 +167,7 @@ class Game:
             port = int(port_entry.get())
         except ValueError:
             messagebox.showerror("ERROR", "Invalid port")
+            return
         self.server_port = port
         self.cThread = threading.Thread(target=self.start_connection, args=(ip, port))
         self.cThread.daemon = True
@@ -414,7 +420,7 @@ class Game:
             self.raise_entry.pack(side="right")
             Button(
                 master=self.options_frame,
-                text="Check" if self.players[self.a]['bet'] >= self.call_to else f"Call {self.players[self.a]['bet'] - self.call_to}",
+                text="Check" if self.players[self.a]['bet'] >= self.call_to else f"Call {self.call_to - self.players[self.a]['bet']}",
                 font='arial 15',
                 bg='green',
                 fg='white',
@@ -464,7 +470,7 @@ class Game:
 
     def raise_bet(self):
         try:
-            amount = int(self.raise_entry.get()) + self.call_to
+            amount = int(self.raise_entry.get()) + (self.call_to - self.players[self.a]['bet'])
         except ValueError:
             messagebox.showerror("ERROR", "Raise amount is invalid")
             return

@@ -5,7 +5,7 @@ import threading
 import datetime
 import random
 
-__version__ = "0.9"
+__version__ = "0.9.1"
 
 LOG_LENGTH = 15
 STARTINGMONEY = 1000
@@ -122,7 +122,7 @@ class Table:
             if data['type'] == 'move':
                 if data['move'] == 'call':
                     if self.playing_users[a]['money'] < self.call_to - self.playing_users[a]['bet']:
-                        self.playing_users['bet'] += self.playing_users[a]['money']
+                        self.playing_users[a]['bet'] += self.playing_users[a]['money']
                         self.playing_users[a]['money'] = 0
                     else:
                         self.playing_users[a]['bet'] = self.call_to
@@ -202,6 +202,7 @@ class Table:
                     msg += f"{self.connected_users[w]['name']} & "
                 msg += f" won with a {self.won_by}"
         for c in self.connected_users:
+            self.connected_users[c]['bet'] = 0
             data = {
                 "type": "msg",
                 "msg": msg
@@ -211,7 +212,7 @@ class Table:
 
     def start_game(self):
         self.pot = 0
-        self.parent_server.Log(f"\u001b[31m[{get_time()}]\u001b[0m Starting game at table {self.name} {self.port}")
+        self.parent_server.Log(f"\u001b[32m[{get_time()}]\u001b[0m Starting game at table {self.name} {self.port}")
         self.game_started = True
         self.playing_users = {}
         for user in self.connected_users:
